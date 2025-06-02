@@ -6,12 +6,19 @@ import url from "url";
 const app = express();
 app.use(express.json());
 
+const sseClients: express.Response[] = []; // <— здесь храним активные SSE-подключения
+
 // ✅ REST API
 app.get("/api/hello", (_req, res) => {
   res.json({ message: "Hello from REST API!" });
 });
 
-app.post("/api/echo", (req, res) => {
+app.post("/api/sse/transfer", (req, res) => {
+  // Рассылка сообщения всем SSE-клиентам
+  sseClients.forEach((client) => {
+    client.write(`data: ${JSON.stringify({ message: req.body })}\n\n`);
+  });
+
   res.json({ youSent: req.body });
 });
 
@@ -46,19 +53,27 @@ webSocketServer.on("connection", (ws) => {
   ws.send("👋 Connected to Zhassulan /ws WebSocket");
 });
 
+// ✅ SSE логика
 app.get("/events", (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  const sendEvent = () => {
+  // Добавляем клиента в список
+  sseClients.push(res);
+  console.log("📡 New SSE client connected");
+
+  // Периодическое обновление (по желанию)
+  const interval = setInterval(() => {
     res.write(`data: ${JSON.stringify({ time: new Date() })}\n\n`);
-  };
+  }, 10000);
 
-  const interval = setInterval(sendEvent, 1000);
-
+  // Удаляем клиента при отключении
   req.on("close", () => {
     clearInterval(interval);
+    const idx = sseClients.indexOf(res);
+    if (idx !== -1) sseClients.splice(idx, 1);
+    console.log("❌ SSE client disconnected");
     res.end();
   });
 });
