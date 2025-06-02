@@ -2,9 +2,16 @@ import http from "http";
 import express from "express";
 import WebSocket from "ws";
 import url from "url";
+import cors from "cors";
+import jwt from "jsonwebtoken";
+
+import { authenticateJWT } from "./middleware/authenticateJWT";
 
 const app = express();
 app.use(express.json());
+app.use(cors());
+
+const JWT_SECRET = "my_jwt_secret";
 
 const sseClients: express.Response[] = []; // <— здесь храним активные SSE-подключения
 
@@ -13,13 +20,22 @@ app.get("/api/hello", (_req, res) => {
   res.json({ message: "Hello from REST API!" });
 });
 
-app.post("/api/sse/transfer", (req, res) => {
-  // Рассылка сообщения всем SSE-клиентам
+app.post("/api/sse/transfer", authenticateJWT, (req, res) => {
+  const user = (req as any).user;
+  const message = req.body;
+
+  // Пример: включить имя пользователя в сообщение
   sseClients.forEach((client) => {
-    client.write(`data: ${JSON.stringify({ message: req.body })}\n\n`);
+    client.write(`data: ${JSON.stringify({ from: user.name, message })}\n\n`);
   });
 
-  res.json({ youSent: req.body });
+  res.json({ status: "sent", from: user.name });
+});
+
+app.post("/api/login", (req, res) => {
+  const user = { id: 1, name: "Zhassulan" }; // В реальности: проверка логина/пароля
+  const token = jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+  res.json({ token });
 });
 
 const server = http.createServer(app);
