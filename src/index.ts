@@ -4,12 +4,14 @@ import WebSocket from "ws";
 import url from "url";
 import cors from "cors";
 import jwt from "jsonwebtoken";
+import cookieParser from "cookie-parser";
 
 import { authenticateJWT } from "./middleware/authenticateJWT";
 
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use(cookieParser());
 
 const JWT_SECRET = "my_jwt_secret";
 
@@ -33,8 +35,19 @@ app.post("/api/sse/transfer", authenticateJWT, (req, res) => {
 });
 
 app.post("/api/login", (req, res) => {
-  const user = { id: 1, name: "Zhassulan" }; // В реальности: проверка логина/пароля
+  const user = { id: Date.now(), ...req.body };
+
   const token = jwt.sign(user, JWT_SECRET, { expiresIn: "7d" });
+
+  // ✅ Устанавливаем cookie
+  res.cookie("access_token", token, {
+    httpOnly: true, // ❗ Защита от XSS
+    secure: false, // true на HTTPS в проде
+    sameSite: "lax", // "strict" / "lax" / "none"
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 дней в мс
+  });
+
+  // Можно вернуть также в body, если нужно
   res.json({ token });
 });
 
@@ -81,8 +94,8 @@ app.get("/events", (req, res) => {
 
   // Периодическое обновление (по желанию)
   const interval = setInterval(() => {
-    res.write(`data: ${JSON.stringify({ time: new Date() })}\n\n`);
-  }, 10000);
+    res.write(`data: ${JSON.stringify({ time: new Date() })}\n\n Привет`);
+  }, 1000);
 
   // Удаляем клиента при отключении
   req.on("close", () => {
